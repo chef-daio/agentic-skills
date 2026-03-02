@@ -1,6 +1,6 @@
 ---
 name: video-meme
-description: Generate short meme videos (5-8 seconds) using Google Veo 2 via the Gemini API. Text-to-video and image-to-video. Chains with twitter-post for auto-posting video memes to @chefdaio.
+description: Generate short meme videos (5-8 seconds) using Google Veo via the Gemini API. Supports Veo 2 (free tier, no audio) through Veo 3.1 (premium, native audio). Text-to-video and image-to-video. Chains with twitter-post for auto-posting video memes to @chefdaio.
 triggers:
   - generate video meme
   - video meme
@@ -10,12 +10,15 @@ triggers:
   - short video
   - veo video
   - animated meme
-version: 2
+  - video with audio
+  - veo 3
+version: 4
 ---
 
 # Video Meme Skill
 
-Generate short meme video clips (5-8 seconds) using Google Veo 2 via the Gemini API.
+Generate short meme video clips (5-8 seconds) using Google Veo via the Gemini API.
+Supports multiple tiers: Veo 2 (free, silent) for daily content, Veo 3.1 (paid, with audio) for premium posts.
 For static memes, use content-gen/meme-gen (templates) or content-gen/meme-creator (AI images).
 
 ## Prerequisites
@@ -27,19 +30,23 @@ For static memes, use content-gen/meme-gen (templates) or content-gen/meme-creat
 
 ## Model Info
 
-| Model | ID | Max Duration | Resolution | Cost | Notes |
-|-------|-----|-------------|------------|------|-------|
-| **Veo 2** | `veo-2.0-generate-001` | 8 seconds | 720p | ~$0.35/sec | Stable, good default |
-| **Veo 3** | `veo-3.0-generate-001` | 8 seconds | 720p-1080p | ~$0.50/sec | Better quality |
-| **Veo 3 Fast** | `veo-3.0-fast-generate-001` | 8 seconds | 720p | ~$0.25/sec | Faster, cheaper |
-| **Veo 3.1** | `veo-3.1-generate-preview` | 8 seconds | up to 4K | ~$0.50/sec | Best quality, preview |
-| **Veo 3.1 Fast** | `veo-3.1-fast-generate-preview` | 8 seconds | 720p-1080p | ~$0.25/sec | Fast + high quality |
+| Model | ID | Max Duration | Resolution | Audio | Cost/sec | 8s clip |
+|-------|-----|-------------|------------|-------|----------|---------|
+| **Veo 2** | `veo-2.0-generate-001` | 8 seconds | 720p | No | ~$0.35 | ~$2.80 |
+| **Veo 3.1 Fast** | `veo-3.1-fast-generate-preview` | 8 seconds | 720p-1080p | Yes | ~$0.15 | ~$1.20 |
+| **Veo 3.1** | `veo-3.1-generate-preview` | 8 seconds | up to 4K | Yes | ~$0.40 | ~$3.20 |
 
 All models support text-to-video (t2v) and image-to-video (i2v).
+Veo 3+ models generate **native audio** (sound effects, ambient noise, music) synchronized with video.
 Veo 3.1 additionally supports `resolution` param: `"720p"`, `"1080p"`, `"4k"`.
 
-**Recommendation:** Use `veo-2.0-generate-001` for daily meme content (cheap, reliable).
-Use `veo-3.1-generate-preview` for high-impact posts like launches.
+**Free tier:** Veo 2 has ~10 free generations/day at 720p (undocumented but confirmed March 2026).
+Veo 3.1 models have NO free tier — all usage is billed.
+
+**Recommendation:**
+- Daily meme content → `veo-2.0-generate-001` (free, silent, 720p)
+- Launches & bangers → `veo-3.1-fast-generate-preview` ($1.20/clip, audio, 1080p — best value)
+- Premium showcase → `veo-3.1-generate-preview` ($3.20/clip, audio, up to 4K)
 
 ## API Details
 
@@ -55,7 +62,11 @@ Use `veo-3.1-generate-preview` for high-impact posts like launches.
 ```bash
 GEMINI_API_KEY=$(grep GEMINI_API_KEY ~/.hermes/.env | cut -d= -f2)
 BASE_URL="https://generativelanguage.googleapis.com/v1beta"
-MODEL="veo-2.0-generate-001"  # or veo-3.0-generate-001, veo-3.1-generate-preview, etc.
+
+# Pick your tier:
+# MODEL="veo-2.0-generate-001"              # Free, no audio, 720p
+MODEL="veo-3.1-fast-generate-preview"      # $1.20/clip, audio, 1080p (best value)
+# MODEL="veo-3.1-generate-preview"          # $3.20/clip, audio, up to 4K
 
 OPERATION=$(curl -s "${BASE_URL}/models/${MODEL}:predictLongRunning" \
   -H "x-goog-api-key: $GEMINI_API_KEY" \
@@ -68,12 +79,16 @@ OPERATION=$(curl -s "${BASE_URL}/models/${MODEL}:predictLongRunning" \
     "parameters": {
       "aspectRatio": "16:9",
       "personGeneration": "allow_adult",
-      "durationSeconds": 8
+      "durationSeconds": 8,
+      "includeAudio": true
     }
   }' | jq -r '.name')
 
 echo "Operation: $OPERATION"
 ```
+
+**Note:** `includeAudio` is only supported on Veo 3+ models. Omit it or set `false` for Veo 2.
+Disabling audio on Veo 3.1 saves ~33% (e.g. Veo 3.1 Fast drops from $0.15 to ~$0.10/sec).
 
 ### Step 2: Poll until done
 
@@ -107,6 +122,7 @@ import requests, json, time, os
 def generate_video_meme(prompt, output_path="/tmp/meme_video.mp4",
                         duration=8, aspect_ratio="16:9",
                         model="veo-2.0-generate-001",
+                        audio=None,
                         poll_interval=15, max_wait=300):
     """Generate a short meme video using Google Veo.
 
@@ -116,6 +132,7 @@ def generate_video_meme(prompt, output_path="/tmp/meme_video.mp4",
         duration: 5, 6, or 8 seconds (int)
         aspect_ratio: "16:9" (landscape) or "9:16" (portrait/vertical)
         model: Veo model ID (see Model Info table)
+        audio: True/False to enable/disable audio. None = auto (True for Veo 3+, False for Veo 2)
         poll_interval: Seconds between status checks
         max_wait: Max seconds to wait before giving up
 
@@ -136,15 +153,27 @@ def generate_video_meme(prompt, output_path="/tmp/meme_video.mp4",
     base_url = "https://generativelanguage.googleapis.com/v1beta"
     headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
+    # Auto-detect audio support based on model
+    is_veo3_plus = "3.0" in model or "3.1" in model
+    include_audio = audio if audio is not None else is_veo3_plus
+
     # Step 1: Submit generation request
+    params = {
+        "aspectRatio": aspect_ratio,
+        "personGeneration": "allow_adult",
+        "durationSeconds": duration
+    }
+    if is_veo3_plus:
+        params["includeAudio"] = include_audio
+
     payload = {
         "instances": [{"prompt": prompt}],
-        "parameters": {
-            "aspectRatio": aspect_ratio,
-            "personGeneration": "allow_adult",
-            "durationSeconds": duration
-        }
+        "parameters": params
     }
+
+    tier = "premium" if is_veo3_plus else "free"
+    audio_str = "with audio" if include_audio else "silent"
+    print(f"Using {model} ({tier}, {audio_str})")
 
     resp = requests.post(
         f"{base_url}/models/{model}:predictLongRunning",
@@ -364,9 +393,15 @@ Twitter accepts MP4 up to 512MB / 140 seconds. Veo 2 outputs 8s clips well under
 
 | Parameter | Values | Default | Notes |
 |-----------|--------|---------|-------|
-| `durationSeconds` | `5`, `6`, `8` | `8` | Must be a number, not string |
+| `durationSeconds` | `5`, `6`, `7`, `8` | `8` | Must be a number, not string |
 | `aspectRatio` | `"16:9"`, `"9:16"` | `"16:9"` | Landscape or portrait |
 | `personGeneration` | `"allow_all"`, `"allow_adult"`, `"dont_allow"` | `"dont_allow"` | Set to allow_adult for meme faces |
+| `includeAudio` | `true`, `false` | `true` (Veo 3+) | **Veo 3+ only.** Native audio generation. Disable to save ~33% |
+| `enhancePrompt` | `true`, `false` | `true` | **Veo 2 only.** Auto-rewrites prompt with more cinematic detail |
+| `negativePrompt` | free text | -- | Describe what to exclude: "blurry, text, watermark, static" |
+| `seed` | `0`-`4294967295` | -- | For semi-reproducible output. Not perfectly deterministic |
+| `sampleCount` | `1`-`4` | `1` | Generate multiple videos per request |
+| `resolution` | `"720p"`, `"1080p"`, `"4k"` | `"720p"` | **Veo 3.1 only.** Higher res = more cost |
 
 ## Pipeline Integration
 
@@ -385,19 +420,27 @@ meme-research → pump-deploy → video-meme (Veo 2) → twitter-post
 
 ## Pitfalls
 
-- Veo 2 generation takes 1-3 minutes. Always poll, don't assume instant results.
-- Cost is ~$0.35/second of video = ~$2.80 for an 8-second clip. Use sparingly for high-impact posts.
+- Generation takes 1-3 minutes for all models. Always poll, don't assume instant results.
+- Veo 3.1 may take slightly longer than Veo 2 due to audio generation.
 - Prompts that are too vague produce boring results. Be specific about action, character, and mood.
+- For Veo 3+ audio: describe sounds in your prompt for best results (e.g. "with dramatic music" or "crowd cheering").
 - Person generation may be restricted in some regions. Use `allow_adult` if needed.
 - The API may return safety blocks on certain prompts. Rephrase if blocked.
-- Videos are 720p. No resolution control on Veo 2 (Veo 3.1 supports 1080p).
+- Veo 2 is 720p only. Veo 3.1 supports 1080p and 4K via the `resolution` param.
 - Twitter video upload requires chunked upload API, not the simple media_upload.
 - Poll interval of 10-15s is fine. Going faster won't speed up generation and wastes quota.
+- `includeAudio` param is ignored on Veo 2 — don't send it for Veo 2 requests.
 
 ## Cost Notes
 
-- Veo 2: ~$0.35/sec (8s clip = ~$2.80)
-- Veo 3 Fast / 3.1 Fast: ~$0.25/sec (8s clip = ~$2.00)
-- Veo 3 / 3.1: ~$0.50/sec (8s clip = ~$4.00)
-- No free tier for video generation (unlike image models)
-- Recommendation: use for launches, milestones, and high-engagement moments. Use free template memes for daily automated posts.
+- Veo 2: ~$0.35/sec (8s clip = ~$2.80) — **FREE TIER: ~10 videos/day at 720p**
+- Veo 3.1 Fast: ~$0.15/sec (8s clip = ~$1.20) with audio, ~$0.10/sec silent
+- Veo 3.1: ~$0.40/sec (8s clip = ~$3.20) with audio
+- Free tier is Veo 2 only (undocumented but confirmed March 2026). Veo 3+ has no free tier.
+- Strategy: Veo 2 free for daily grind, Veo 3.1 Fast for launches/bangers ($1.20 is cheap for video+audio).
+
+## Download Note
+
+Generated video files are stored for **2 days only** on Google's servers. Always download immediately.
+The download URI requires the API key: `curl -L -o video.mp4 -H "x-goog-api-key: $KEY" "$VIDEO_URI"`
+Or append `?key=$KEY` as query parameter.
