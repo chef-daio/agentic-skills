@@ -171,6 +171,34 @@ async def verify_token():
 asyncio.run(verify_token())
 ```
 
+## Post-Launch: Register Token for Daily Memes
+
+After a successful deployment, add the new token to the deployed tokens tracker so the daily meme cron job starts generating content for it:
+
+```python
+import json, os
+from datetime import datetime
+
+tracker_path = os.path.expanduser("~/.config/meme-pipeline/deployed-tokens.json")
+with open(tracker_path, "r") as f:
+    tokens = json.load(f)
+
+tokens["tokens"].append({
+    "ticker": "TICKER",
+    "name": "TOKEN_NAME",
+    "mint": "MINT_ADDRESS",
+    "pump_url": "https://pump.fun/coin/MINT_ADDRESS",
+    "deployed_at": datetime.now().isoformat(),
+    "status": "active",
+    "meme_angle": "short description of the meme/story behind the coin"
+})
+
+with open(tracker_path, "w") as f:
+    json.dump(tokens, f, indent=2)
+```
+
+This is a **mandatory step** after every successful deployment. The daily meme cron at `~/.config/meme-pipeline/daily-meme.py` picks a random active token each day and generates + posts a meme for it.
+
 ## Post-Launch: Buy More / Sell
 
 ### Buy more of your token:
