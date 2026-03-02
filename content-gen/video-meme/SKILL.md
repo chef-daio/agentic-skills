@@ -207,7 +207,8 @@ Use an existing meme image as the starting frame and animate it:
 import base64
 
 def image_to_video(image_path, prompt="", output_path="/tmp/meme_video.mp4",
-                   duration="8", aspect_ratio="16:9"):
+                   duration=8, aspect_ratio="16:9",
+                   model="veo-2.0-generate-001"):
     """Animate a still image into a video using Veo 2 i2v."""
     api_key = _load_api_key()  # same pattern as above
     base_url = "https://generativelanguage.googleapis.com/v1beta"
