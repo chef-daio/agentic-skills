@@ -7,6 +7,7 @@ Reusable skills for AI coding agents. Framework-agnostic — works with Hermes A
 | Skill | Category | Description |
 |-------|----------|-------------|
 | [solana-wallet](crypto/solana-wallet/SKILL.md) | Crypto | Manage Solana wallets from the CLI — keypairs, balances, transfers, network switching |
+| [meme-image-suite](content-gen/meme-image-suite/SKILL.md) | Content Gen | General-purpose static meme generation for any agent (templates + AI images, no video) |
 
 ## Structure
 
